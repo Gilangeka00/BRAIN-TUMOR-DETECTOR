@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Rumah Sakit Pemerintah Sultan Syarif Kasim</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    html, body { height:100%; margin:0; overflow:hidden; }
+    #mainContent { overflow-y:auto; }
+    .fade-in { opacity:0; transform:translateY(20px); transition:opacity .8s, transform .8s; }
+    .fade-in.visible { opacity:1; transform:translateY(0); }
+    .slide-down { transform:translateY(-100%); transition:transform .6s; }
+    .slide-down.visible { transform:translateY(0); }
+    .slide-up { transform:translateY(100%); transition:transform .6s; }
+    .slide-up.visible { transform:translateY(0); }
+
+    /* Overlay loading */
+    #loadingOverlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      z-index: 50;
+    }
+    #loadingOverlay.hidden { display: none; }
+
+    /* Popup Error */
+    #errorPopup {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(139,0,0,0.9);
+      color: #FFF;
+      text-align: center;
+      padding: 2rem;
+      font-size: 1.25rem;
+      font-weight: bold;
+      z-index: 100;
+    }
+    #errorPopup.hidden { display: none; }
+    #errorPopup.visible { display: flex; }
+  </style>
+</head>
+<body class="bg-[#D5D6D2] flex flex-col relative">
+
+  <!-- Loading Overlay -->
+  <div id="loadingOverlay" class="hidden">
+    <div class="text-white mb-4 text-xl font-semibold">Sedang memproses...</div>
+    <div class="w-2/3 bg-gray-200 rounded-full h-4 overflow-hidden">
+      <div id="fakeProgressBar" class="h-full bg-[#537072] w-0"></div>
+    </div>
+    <div id="fakeProgressText" class="text-white mt-2">0%</div>
+  </div>
+
+  <!-- Popup Error -->
+  <div id="errorPopup" class="hidden">
+    MESIN MENDETEKSI BUKAN GAMBAR MRI/TIDAK SESUAI
+  </div>
+
+  <!-- HEADER -->
+  <header id="pageHeader" class="bg-[#335252] p-4 slide-down">
+    <div class="container mx-auto flex justify-center text-center">
+      <h1 class="text-2xl md:text-3xl font-bold text-white leading-tight">
+        RUMAH SAKIT PEMERINTAH KOTA MEDAN<br>SULTAN SYARIF KASIM 2
+      </h1>
+    </div>
+  </header>
+
+  <!-- MAIN CONTENT -->
+  <main id="mainContent" class="flex-grow flex flex-col container mx-auto px-4 py-6 fade-in">
+
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="mb-4">
+          {% for category, msg in messages %}
+            <div class="p-3 rounded {{ 'bg-red-200 text-red-800' if category=='error' else 'bg-green-200 text-green-800' }}">
+              {{ msg }}
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 h-full">
+      <!-- Upload & Preview -->
+      <div class="col-span-1 md:col-span-2 bg-[#304040] rounded-lg overflow-hidden flex flex-col">
+        <form id="predictForm" action="{{ url_for('index') }}" method="POST" enctype="multipart/form-data" class="flex flex-col h-full">
+          <div class="bg-[#537072] p-4 text-center">
+            <label for="imageInput" class="cursor-pointer px-6 py-3 bg-[#D5D6D2] text-[#335252] font-semibold rounded-md">
+              MASUKAN GAMBAR
+            </label>
+            <input id="imageInput" type="file" name="file" accept="image/*" class="hidden" onchange="previewImage(event)" required>
+          </div>
+          <div class="p-4 text-center">
+            <button id="predictBtn" type="submit" class="px-8 py-3 bg-[#335252] text-[#D5D6D2] font-semibold rounded-md">
+              PREDIKSI
+            </button>
+          </div>
+          <div class="flex-grow bg-[#335252] m-4 rounded-lg flex flex-col">
+            <div class="bg-[#D5D6D2] py-2 text-center font-semibold text-[#335252]">PREVIEW GAMBAR</div>
+            <div id="leftPreview" class="flex-grow flex items-center justify-center h-80">
+              <span class="text-white italic">Belum ada gambar</span>
+            </div>
+          </div>
+        </form>
+      </div>
+
+      <!-- Hasil Deteksi -->
+      <div class="bg-[#335252] rounded-lg overflow-hidden flex flex-col">
+        <div class="bg-[#D5D6D2] border-2 border-[#335252] rounded-lg py-2 text-center font-semibold text-[#335252]">
+          HASIL PREDIKSI GAMBAR MRI
+        </div>
+        <div class="flex-grow w-full p-4 bg-[#335252] flex items-center justify-center">
+          {% if filename %}
+            <div class="text-center text-white flex flex-col items-center space-y-2">
+              {% if probability_float < 0.80 %}
+                <p class="font-bold text-lg text-[#537072]">Mohon upload gambar MRI yang sesuai</p>
+              {% else %}
+                <p class="font-bold text-lg">{{ label }}</p>
+                <p>Akurasi: <span class="font-semibold">{{ probability }}</span></p>
+                <div class="w-64 h-64 rounded-lg overflow-hidden">
+                  <img src="{{ url_for('static', filename='uploads/' + filename) }}" alt="Hasil" class="h-full w-full object-contain rounded-md"/>
+                </div>
+              {% endif %}
+            </div>
+          {% else %}
+            <span class="text-[#D5D6D2] italic">Menunggu prediksi</span>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- FOOTER -->
+ <footer id="pageFooter" class="bg-[#335252] text-[#D5D6D2] py-4 slide-up font-semibold">
+  <div class="flex justify-center items-center gap-4 flex-wrap text-center">
+    <p class="uppercase">MODEL BY VIT BRAIN TUMOR DETECTOR</p>
+    <span class="text-[#D5D6D2]">|</span>
+    <a href="{{ url_for('contoh_gambar') }}" target="_blank" class="uppercase underline">
+      CONTOH GAMBAR MRI YANG SESUAI
+    </a>
+  </div>
+</footer>
+
+  <!-- JS Preview, Loading & Popup Error -->
+  <script>
+    // Preview gambar saat pilih file
+    function previewImage(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = ev => {
+        document.getElementById('leftPreview').innerHTML =
+          `<img src="${ev.target.result}" class="max-h-full max-w-full object-contain rounded" />`;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    // Animasi halaman (fade-in, slide-down, slide-up)
+    window.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('mainContent').classList.add('visible');
+      document.getElementById('pageHeader').classList.add('visible');
+      document.getElementById('pageFooter').classList.add('visible');
+    });
+
+    // loading dengan progress bar dan popup error
+    const form = document.getElementById('predictForm');
+    form.addEventListener('submit', e => {
+      e.preventDefault();
+      const overlay = document.getElementById('loadingOverlay');
+      const bar = document.getElementById('fakeProgressBar');
+      const text = document.getElementById('fakeProgressText');
+      const errorPopup = document.getElementById('errorPopup');
+
+      overlay.classList.remove('hidden');
+
+      let pct = 0;
+      const intervalId = setInterval(() => {
+        pct = Math.min(100, pct + Math.floor(Math.random() * 15) + 1);
+        bar.style.width = pct + '%';
+        text.textContent = pct + '%';
+        if (pct >= 100) clearInterval(intervalId);
+      }, 100);
+
+      form.submit();
+
+      // Jika lebih dari 2 detik, tampilkan popup error
+      setTimeout(() => {
+        overlay.classList.add('hidden');
+        clearInterval(intervalId);
+
+        errorPopup.classList.remove('hidden');
+        errorPopup.classList.add('visible');
+        document.body.style.backgroundColor = '#8B0000';
+
+        // Setelah 4 detik, sembunyikan popup dan redirect
+        setTimeout(() => {
+          errorPopup.classList.remove('visible');
+          errorPopup.classList.add('hidden');
+          window.location.href = '/';
+        }, 5000);
+      }, 5000);
+    });
+  </script>
+
+</body>
+</html>
